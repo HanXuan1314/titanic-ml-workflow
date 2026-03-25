@@ -1,0 +1,23 @@
+import pandas as pd
+
+# 1. 读取 CSV（这里用在线链接，如果你本地有，改成 "data/train.csv"）
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+df = pd.read_csv(url)
+
+print("========== 1. 看前5行 (df.head()) ==========")
+print(df.head())
+
+print("\n========== 2. 看数据结构 (df.info()) ==========")
+# info() 方法会自动打印，不需要加 print
+df.info()
+
+print("\n========== 3. 看缺失值 (df.isnull().sum()) ==========")
+print(df.isnull().sum())
+
+print("\n========== 4. 看标签分布 (df['Survived'].value_counts()) ==========")
+print("具体数量：")
+# 统计“Survived”列中每个类别中出现的次数
+print(df["Survived"].value_counts())
+print("\n百分比分布：")
+# 统计“Survived”列中每个类别所占的比例(normalize=True将计数转换为百分比，总和为1)
+print(df["Survived"].value_counts(normalize=True))
