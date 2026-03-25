@@ -1,0 +1,68 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+print("1. 正在读取数据并选列...")
+# 使用在线数据集链接代替 "data/train.csv"，确保你复制粘贴就能直接跑通
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+df = pd.read_csv(url)
+
+# 选出特征和标签
+# 定义变量(我们要预测的列)
+target = "Survived"
+# 数值型特征(连续或离散数值)
+num_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+# 类别型数值(文本或分类变量)
+cat_features = ["Sex", "Embarked"]
+
+# 提取特征矩阵 X 和标签 y (使用 copy 避免之后操作时出现SettingWithCopyWarning警告)
+X = df[num_features + cat_features].copy()
+y = df[target].copy()
+
+print("2. 正在处理缺失值...")
+# 数值列：用中位数填补
+X[num_features] = X[num_features].fillna(X[num_features].median())
+# 类别列：用众数填补 (mode()返回的是一个Series，取第一个值即iloc[0](若多个众数则取第一个))
+X[cat_features] = X[cat_features].fillna(X[cat_features].mode().iloc[0])
+
+print("3. 正在进行 One-hot 编码...")
+# 把 "Sex" 和 "Embarked" 这种文本列变成数字列 (drop_first=True 会删除第一个类别，可以避免共线性)
+X = pd.get_dummies(X, columns=cat_features, drop_first=True)
+
+print("4. 正在划分训练集和测试集...")
+# 切分数据 (80% 训练，20% 测试)
+# random_state 固定随机种子，保证结果可复现
+# stratify=y 按目标变量分层抽样，保证训练集和测试集的生还比例和原始数据一致
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y  # 保证训练集和测试集的生还比例一致
+)
+
+print("5. 正在对数值特征进行标准化...")
+# 创建标准化器(将数据转换为均值为0，标准差为1的正态分布)
+scaler = StandardScaler()
+# 【重点】在训练集上 fit_transform (计算均值和方差，并进行缩放)
+X_train[num_features] = scaler.fit_transform(X_train[num_features])
+# 【重点】在测试集上只 transform (使用训练集算出的均值和方差进行缩放，防止数据泄漏)
+X_test[num_features] = scaler.transform(X_test[num_features])
+
+print("6. 正在训练逻辑回归模型...")
+# 逻辑回归分类器，max_iter 设置最大迭代次数，确保收敛
+model = LogisticRegression(max_iter=2000)
+# 用训练数据拟合模型
+model.fit(X_train, y_train)
+
+print("7. 正在预测并输出评估结果...\n")
+y_pred = model.predict(X_test)
+
+# 输出最终的成绩单
+print("===== Day 9 模型评估结果 =====")
+print("Accuracy (准确率):", accuracy_score(y_test, y_pred))
+print("\nConfusion Matrix (混淆矩阵):")
+print(confusion_matrix(y_test, y_pred))
+print("\nClassification Report (分类报告):")
+print(classification_report(y_test, y_pred))
