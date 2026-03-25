@@ -1,0 +1,68 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+# 1. 读取数据 (使用在线链接方便直接运行)
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+df = pd.read_csv(url)
+
+target = "Survived"
+num_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+cat_features = ["Sex", "Embarked"]
+
+X = df[num_features + cat_features]
+y = df[target]
+
+# 2. 划分数据集
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# 3. 定义数值列的“专属流水线” (填补中位数 -> 标准化)
+# Pipeline 将多个步骤串联起来，输入数据会依次经过每个步骤
+numeric_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),   # 用中位数填补缺失值
+    ("scaler", StandardScaler())                     # 标准化（均值0，标准差1）
+])
+
+# 4. 定义类别列的“专属流水线” (填补众数 -> One-hot编码)
+categorical_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),  # 用众数（出现最多的值）填补缺失值
+    ("onehot", OneHotEncoder(handle_unknown="ignore"))     # 独热编码，遇到未知类别时忽略
+])
+
+# 5. ColumnTransformer：把两根流水线合并，并指定它们分别处理哪些列
+# ColumnTransformer 可以对不同列应用不同的转换
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, num_features),      # 数值列应用 numeric_transformer
+    ("cat", categorical_transformer, cat_features)   # 类别列应用 categorical_transformer
+])
+
+# 6. 终极流水线：预处理 + 逻辑回归模型
+# 最终 Pipeline 包含两步：预处理 + 分类模型
+# 这样做的好处是：所有预处理（缺失值填补、编码、缩放）和模型训练都封装在一起
+# 在预测时只需调用 clf.predict()，就会自动执行预处理后再预测，避免数据泄露
+clf = Pipeline([
+    ("preprocessor", preprocessor),                  # 数据预处理部分
+    ("model", LogisticRegression(max_iter=2000))     # 分类模型部分
+])
+
+# 7. 训练与预测 (你看！现在只需要一行代码就能完成所有预处理和训练！)
+# 训练时，Pipeline 会自动将 X_train 先经过 preprocessor 转换，再交给模型训练
+clf.fit(X_train, y_train)
+# 预测时，也会自动对 X_test 执行相同的预处理（使用训练阶段拟合的转换规则）
+y_pred = clf.predict(X_test)
+
+# 8. 评估结果
+print("===== Day 10 Pipeline 模型评估 =====")
+print("accuracy:", accuracy_score(y_test, y_pred))
+print("\nconfusion_matrix:\n", confusion_matrix(y_test, y_pred))
+print("\nclassification_report:\n", classification_report(y_test, y_pred))
