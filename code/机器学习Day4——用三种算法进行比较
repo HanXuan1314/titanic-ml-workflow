@@ -1,0 +1,79 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+# ======= 今日新增导入 =======
+from sklearn.linear_model import LogisticRegression   # 逻辑回归模型
+from sklearn.tree import DecisionTreeClassifier       # 决策树模型
+from sklearn.ensemble import RandomForestClassifier   # 随机森林模型(集成学习)
+
+# ============================
+
+# 1. 读取数据
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+df = pd.read_csv(url)
+
+target = "Survived"
+num_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+cat_features = ["Sex", "Embarked"]
+
+X = df[num_features + cat_features]
+y = df[target]
+
+# 2. 划分数据集
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# 3. 定义数值列流水线
+# 对数值特征：先填补缺失值(用中位数),再标准化(减去均值除以标准差，使特征处于同一量级)
+numeric_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),  # 用中位数填补缺失值
+    ("scaler", StandardScaler())                    # 标准化
+])
+
+# 4. 定义类别列流水线
+categorical_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("onehot", OneHotEncoder(handle_unknown="ignore"))
+])
+
+# 5. 合并为预处理器
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, num_features),
+    ("cat", categorical_transformer, cat_features)
+])
+
+# 6. 定义要比较的模型字典
+# 存放三个不同分类器，用于后续循环比较
+models = {
+    "LogisticRegression": LogisticRegression(max_iter=2000, random_state=42),
+    "DecisionTree": DecisionTreeClassifier(random_state=42),
+    "RandomForest": RandomForestClassifier(random_state=42)
+}
+
+# 7. 循环训练并评估这 3 个模型
+for name, model in models.items():
+    # 组装终极流水线：先经过预处理器(填补+编码+标准化)，再送入模型
+    clf = Pipeline([
+        ("preprocessor", preprocessor),
+        ("model", model)
+    ])
+
+    # 训练模型：使用训练集拟合流水线
+    clf.fit(X_train, y_train)
+    # 在训练集上进行预测
+    y_pred = clf.predict(X_test)
+
+    # 8. 打印评估结果
+    print(f"\n==================== {name} ====================")
+    print(f"accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print("\nconfusion_matrix:\n", confusion_matrix(y_test, y_pred))
+    print("\nclassification_report:\n", classification_report(y_test, y_pred))
