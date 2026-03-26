@@ -1,0 +1,97 @@
+import pandas as pd
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
+# ✅ 直接从网上读取数据（Kaggle Titanic 公共数据集），无需下载！
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+df = pd.read_csv(url)
+
+target = "Survived"
+num_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+cat_features = ["Sex", "Embarked"]
+
+X = df[num_features + cat_features]
+y = df[target]
+
+# 划分训练/测试集（保持与之前一致）
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# ---------- 数据预处理 & 模型 Pipeline ----------
+numeric_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="median"))
+])
+
+categorical_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("onehot", OneHotEncoder(handle_unknown="ignore"))
+])
+
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, num_features),
+    ("cat", categorical_transformer, cat_features)
+])
+
+# 构建完整流水线：预处理+决策树模型
+# 将预处理和模型串联，保证在交叉验证和预测时，预处理只基于训练集拟合，避免数据泄露
+pipe = Pipeline([
+    ("preprocessor", preprocessor),
+    ("model", DecisionTreeClassifier(random_state=42))
+])
+
+# ---------- 网格搜索：调参核心 ----------
+# 定义要搜索的超参数组合
+# 注意参数名前加"model__"是因为在 Pipeline中模型部分命名为"model"
+param_grid = {
+    "model__max_depth": [2, 3, 5, 7, None],   # 树的最大深度，None表示不限制(让树完全生长)
+    "model__min_samples_split": [2, 5, 10],   # 内部节点再划分所需的最小样本数，越大模型越简单
+    "model__min_samples_leaf": [1, 2, 4]      # 叶子节点最少样本数，越大模型越简单
+}
+
+# 定义分层K折交叉验证策略(5折)，保证每折中各类别比例与原始数据一致
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# 网格搜索对象：自动尝试所有参数组合，用交叉验证评估并选出最优参数
+grid = GridSearchCV(
+    estimator=pipe,           # 要调参的模型(完整流水线)
+    param_grid=param_grid,    # 参数组合网格
+    cv=cv,                    # 交叉验证策略
+    scoring="accuracy",       # 评估指标为准确率
+    n_jobs=-1,   # 用所有 CPU 核心并行计算，加速搜索
+    verbose=1    # 输出进度信息，便于观察运行状态（可选）
+)
+
+# 启动网格搜索，在训练集上进行（交叉验证是在训练集内部进行的）
+print("🚀 正在对决策树进行网格搜索（会自动尝试 5×3×3=45 种参数组合）...")
+grid.fit(X_train, y_train)
+
+# ---------- 输出结果 ----------
+print("\n" + "="*50)
+print("✅ best_params_ (最优参数组合):")
+print(grid.best_params_)    # 打印交叉验证得分最高的参数组合
+
+print("\n✅ best_score_ (5折交叉验证上的最佳准确率):")
+print(grid.best_score_)     # 打印该参数组合在交叉验证上的平均准确率
+
+# 取出最优模型(已用整个训练集重新训练)
+best_model = grid.best_estimator_
+# 在训练集上进行预测
+y_pred = best_model.predict(X_test)
+
+print("\n✅ test accuracy (在完全没见过的测试集上的准确率):")
+print(accuracy_score(y_test, y_pred))
+
+print("\n✅ confusion matrix (混淆矩阵):")
+print(confusion_matrix(y_test, y_pred))
+
+print("\n✅ classification report (精确率/召回率/F1):")
+print(classification_report(y_test, y_pred))
