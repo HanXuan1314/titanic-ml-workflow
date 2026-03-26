@@ -1,0 +1,68 @@
+import pandas as pd
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+
+# ⚠️ 注意这里：确保你的数据路径是正确的！
+# 如果文件和代码在同一文件夹，请去掉 "data/" 改成 "train.csv"
+df = pd.read_csv("https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv")
+
+target = "Survived"
+num_features = ["Pclass", "Age", "SibSp", "Parch", "Fare"]
+cat_features = ["Sex", "Embarked"]
+
+# 将数据拆分为特征矩阵X和标签向量Y
+X = df[num_features + cat_features]  # 只保留需要用到的特征列
+y = df[target]                       # 目标列
+
+numeric_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler())
+])
+
+categorical_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("onehot", OneHotEncoder(handle_unknown="ignore"))
+])
+
+# 将上述两个预处理流水线组合成一个预处理器，分别应用于不同列
+# ColumnTransformer 可以按列名指定不同的处理方式
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, num_features),     # 对数值列应用数值流水线
+    ("cat", categorical_transformer, cat_features)  # 对类别列应用类别流水线
+])
+
+# 用字典存放三个常用分类器，后续统一评估
+models = {
+    "LogisticRegression": LogisticRegression(max_iter=2000),  # 逻辑回归，增大迭代次数保证收敛
+    "DecisionTree": DecisionTreeClassifier(random_state=42),  # 决策树，固定随机种子保证结果可复现
+    "RandomForest": RandomForestClassifier(random_state=42)   # 随机森林，同样固定随机种子保证结果可复现
+}
+
+# 使用分层K折交叉验证，保证每一折中各类别的比例与原始数据一致
+# n_splits = 5 表示将数据分成5份，每次用4份训练，1份验证， 重复5次
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# 循环遍历每个模型，构建包含预处理的完整流水线，并进行交叉验证
+for name, model in models.items():
+    # 构建完整流水线：预处理 → 模型
+    # 这样可以保证在交叉验证的每一折中，预处理(填补，标准化，编码)都只基于训练集
+    # 避免数据泄露(测试集信息不能用于训练集预处理)
+    clf = Pipeline([
+        ("preprocessor", preprocessor),
+        ("model", model)
+    ])
+
+    # 执行5折交叉验证，评估指标为准确率（accuracy）
+    # cross_val_score 会自动对每一折进行训练和验证，并返回5个分数
+    scores = cross_val_score(clf, X, y, cv=cv, scoring="accuracy")
+    print(f"{name}:")
+    print("scores:", scores)
+    print("mean:", scores.mean())
+    print("std:", scores.std())
+    print("-" * 30)  # 加了一条分隔线，让输出更好看
